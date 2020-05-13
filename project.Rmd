@@ -1,0 +1,297 @@
+---
+title: "Project"
+output: word_document
+---
+```{r}
+
+library(fpp2)
+```
+
+```{r}
+
+#install.packages("quantmod")
+library(quantmod)
+
+Sys.Date()
+```
+
+
+```{r}
+
+getSymbols(Symbols = "TSLA", src = "yahoo")
+
+tsla=data.frame(TSLA)
+View(tsla)
+tsla_close = tsla$TSLA.Close
+tsla_close <- ts(data=tsla_close, frequency=253, start=c(2010,7))
+
+tsla_open = ts(data = tsla$TSLA.Open, frequency = 253, start = c(2010,7))
+
+tsla_high = ts(data = tsla$TSLA.High, frequency = 253, start = c(2010,7))
+
+```
+
+
+
+```{r}
+
+autoplot(tsla_close) + xlab("Year") + ylab("Closing Price of tesla")+
+  ggtitle("Timeseries plot of Tesla closing price")
+```
+
+
+```{r}
+
+ggseasonplot(tsla_close, year.labels = TRUE, year.labels.left = TRUE) + ylab("Closing price") + xlab(" Dates across year")
+```
+
+
+```{r}
+
+qplot(tsla$TSLA.Close,tsla$TSLA.Open, data=tsla)
+
+```
+
+```{r}
+library(GGally)
+
+ggpairs(tsla[,1:5])
+
+```
+
+```{r}
+meanf(tsla_close, h=5)
+
+```
+
+
+```{r}
+naive(tsla_close, h=5)
+
+```
+
+```{r}
+snaive(tsla_close, h=5)
+
+```
+
+
+```{r}
+
+abc = window(tsla_close, start=2017,end=c(2018,12))
+
+autoplot(abc)+
+  autolayer(meanf(tsla_close, h=50), series="Mean",PI=FALSE) +
+  autolayer(rwf(tsla_close, h=50), series="Naive",PI=FALSE)+
+  autolayer(rwf(tsla_close,drift = TRUE, h=50), series="Drift",PI=FALSE) +
+  ggtitle("closing price prediction using simple forecasting methods") +
+  xlab("year")+ ylab("closing price")+
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+```{r}
+
+print(str(tsla_close))
+
+###########  Creating our training dataset
+close_train= ts(tsla_close[1:1800])
+print(head(close_train))
+
+###########   Creating our test dataset
+close_test = ts(tsla_close[1801:2128])
+print(head(close_test))
+```
+
+```{r}
+df= data.frame(tsla_close,tsla_open,tsla_high)
+
+#plot(jitter(tsla_close)~jitter(tsla_high), xlab="closing price", ylab="high price", data=df)
+
+fit=lm(tsla_close~tsla_high,data = df)
+
+print(summary(fit))
+
+```
+
+```{r}
+
+y=tslm(tsla_close ~ tsla_open, data=df)
+
+summary(y)
+
+
+```
+
+```{r}
+fit1 = stl(tsla_close, s.window = 5)
+plot(tsla_close, col="gray", main="Trend cycle component", ylab="Price", xlab="Year")
+lines(fit1$time.series[,2], col="red", ylab="trend")
+
+# shows the trend-cycle component in red line
+```
+
+```{r}
+plot(tsla_close, main="Tesla stock closing price", ylab="Price (in Dollars)", xlab="Year")
+
+lines(ma(tsla_close,100),col="blue")
+
+```
+
+```{r}
+
+fit2 = stl(tsla_close, t.window = 1000, s.window = "periodic", robust = TRUE)
+fit2 %>% seasadj() %>% naive() %>% 
+  autoplot() + ylab("Closing Price") +
+  ggtitle("Naive forecasts of seasonally adjusted data")
+
+```
+
+```{r}
+# forecasting the seasonal component and seasonally adjusted component seperately
+# In other words, a seasonal naive method is used for the seasonal component after an STL decomposition of the data
+
+# Seasonal and Trend Decomposition using Loess
+
+fcast = forecast(fit2, method = "naive")
+plot(fcast, ylab="Closing Price")
+```
+
+```{r}
+
+plot(tsla_close, ylab="Closing Price of the Stock", xlab="Year")
+fit3=ses(tsla_close, alpha = 0.2, initial = "simple", h=5)
+
+plot(fit3, plot.conf=FALSE, main="TESLA stock closing Price", ylab="Price", xlab="Year", fcol="white",type="o")
+lines(fitted(fit3), col="blue", type="o")
+
+legend("topleft", lty = 1, col = c(1,"blue","red","green"),
+       c("data", expression(lambda ==0.2)), pch=1)
+```
+
+```{r}
+# Holt linear method is the extension of simple exponential smoothing to forecast data which has trend
+
+x1 = holt(tsla_close, h=5)
+
+print(x1)
+
+print(x1$model)
+
+```
+
+```{r}
+fit4= hw(tsla_close, seasonal = "additive", alpha = 0.2)
+
+autoplot(tsla_close)+
+  autolayer(fit4, series="HW additive forecasts", PI=FALSE)+
+  guides(colour=guide_legend(title = "Forecast"))
+
+
+```
+
+```{r}
+
+# Our null hypothesis is that the data is ststionary, and we look for evidence in form of p-values
+
+# Whenever we have high or significant p-values, that means that our data needs differencing,
+
+# On the controrary, after the first differencing, if we find out that the p-values becomes significantly small that means that we have proved the null hypothesis to be false and now our data is stationary 
+
+# The test for differencing can be computed using the ur.kpss() function and that is available in the urca package
+
+
+library(urca)
+n = ndiffs(tsla_close)
+
+print(n)
+
+test=ur.kpss(tsla_close)
+
+print(summary(test))
+
+test2= ur.kpss(diff(tsla_close))
+summary(test2)
+
+
+
+```
+
+```{r}
+# A similar function is used to determinne if seasonal differencing is required or not. that function is called as nsdiffs() and is implemented below
+
+ns = nsdiffs(tsla_close)
+
+print(ns)
+
+# Here the answer for nsdiffs() we get is equal to 0 that means that we do not require seasonal differencing for our data.
+```
+
+```{r}
+
+# In multiple regression model, we forecasted variable of interest using a linear combination of predictor variables.
+
+# Auto-Regression is slightly different because in autoregression we forecast the variable using the linear combination of the past values of the variables.
+
+# The name itself suggests that the regression of the forecast variable is against itself
+
+# AR(p) is called as autoregression model of order 'p' that means that the model uses p past values of the target variable
+
+Arima(tsla_close, order = c(1,0,0))
+print("*******************************")
+
+Arima(tsla_close, order = c(2,0,0))
+
+print("*******************************")
+Arima(tsla_close, order = c(3,0,0))
+
+print("*******************************")
+```
+
+```{r}
+##  The Moving Average Models
+
+# the first thing we need to keep in mind is that we should not confuse the moving average models with moving-average smoothing.
+
+# Reason: The moving average model is used for  forecasting future values while the moving-average smoothing is used to estimate the trend-cycle of the past values.
+
+# In this model instead of using the past values to forecast values of the variable, we use the past forecast errors to forecast in a model similar to regression
+
+
+Arima( tsla_close, order = c(0,0,1))
+print("*********************************")
+
+
+Arima( tsla_close, order = c(0,0,2))
+print("*********************************")
+
+
+Arima( tsla_close, order = c(0,0,3))
+print("*********************************")
+
+
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
